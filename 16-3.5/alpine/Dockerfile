@@ -76,7 +76,24 @@ RUN set -eux \
     && mkdir /tempdb \
     && chown -R postgres:postgres /tempdb \
     && su postgres -c 'pg_ctl -D /tempdb init' \
-    && su postgres -c 'pg_ctl -D /tempdb -c -l /tmp/logfile -o '-F' start ' \
+    # QEMU7.0/BUILDX - JIT workaround
+    && if [[ "$(uname -m)" == "aarch64" && "%%PG_MAJOR%%" != "10" ]] || \
+          [[ "$(uname -m)" == "ppc64le" && "%%PG_MAJOR%%" != "10" ]]; then \
+            set -eux \
+            # for the buildx/qemu workflow
+            #   with (aarch64 ppc64le) and PG>10 .. we are testing with JIT=OFF to avoid QEMU7.0/BUILDX error
+            && echo "WARNING: JIT=OFF testing (aarch64 ppc64le)!" \
+            && echo "## WARNING: tested with JIT=OFF (aarch64 ppc64le)!" >> /_pgis_full_version.txt \
+            && su postgres -c 'pg_ctl -D /tempdb -c -l /tmp/logfile -o '--jit=off' start ' \
+            && su postgres -c 'psql -c "SHOW JIT;"' \
+            ; \
+        else \
+            set -eux \
+            # default test .. no problem expected.
+            && su postgres -c 'pg_ctl -D /tempdb -c -l /tmp/logfile -o '-F' start ' \
+            ; \
+        fi \
+    \
     && cd regress \
     && make -j$(nproc) check RUNTESTFLAGS=--extension   PGUSER=postgres \
     \
